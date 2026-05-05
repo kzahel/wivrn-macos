@@ -7,8 +7,8 @@ contains:
 
 - `wivrn-server-headless`
 - the Monado OpenXR runtime used by WiVRn
-- enough launcher/packaging glue to run on macOS
-- eventually, a signed `.app` and `.pkg` built by GitHub Actions
+- a small Tauri controller app for status, logs, updates, and start/stop
+- a signed `.app`, `.dmg`, and `.pkg` built by GitHub Actions
 
 ## Current Shape
 
@@ -24,6 +24,8 @@ wivrn-macos/
   third_party/
     wivrn/
     monado/
+  desktop/
+    tauri-app/
   build/
     wivrn/
   dist/
@@ -39,8 +41,11 @@ ignored by git.
 - Homebrew packages:
 
 ```bash
-brew install cmake ninja
+brew install cmake ninja pkg-config
 ```
+
+- Rust
+- Node.js and pnpm
 
 For Quest testing you will also need Android platform tools and the stock WiVRn
 Quest APK installed on the headset, but this repo does not include live headset
@@ -99,6 +104,12 @@ After building:
 build/wivrn/server/wivrn-server-headless --no-encrypt
 ```
 
+Host speaker audio can be enabled explicitly:
+
+```bash
+build/wivrn/server/wivrn-server-headless --no-encrypt --enable-audio
+```
+
 For development builds, point local OpenXR apps at the generated runtime
 manifest:
 
@@ -138,26 +149,71 @@ active-runtime convention while using the macOS runtime lookup path supported by
 the Khronos OpenXR loader. `XR_RUNTIME_JSON` remains a developer escape hatch
 for testing a non-installed build.
 
+## Current Feature State
+
+The intended current working slice is:
+
+- native Metal OpenXR runtime on macOS through the Monado fork
+- `wivrn-server-headless` as the host process
+- direct Quest connection using the stock WiVRn Quest APK
+- stereo video streaming with VideoToolbox H.264 on Apple builds
+- 6DoF tracking, controller input, and hand tracking through WiVRn's existing
+  network path
+- passthrough alpha stream support on the macOS video path
+- optional host speaker audio to the headset with `--enable-audio`
+
+## Known Feature Gaps
+
+Known gaps compared to the Linux WiVRn server:
+
+- **Foveated rendering/encoding:** real foveation is not active on macOS. The
+  server sends identity foveation parameters so the Quest client does not
+  inverse-foveate an image that was never foveated by the Metal compositor. This
+  keeps geometry correct, but full-resolution frames must be encoded and fast
+  head turns may show edge artifacts that Linux avoids with its foveated
+  compositor path.
+- **Quest microphone return:** speaker audio can be sent to the headset, but
+  Quest microphone audio is not exposed to macOS apps as an input device.
+  Linux-style `WiVRn(microphone)` parity likely needs a virtual CoreAudio input
+  device or another explicit macOS input strategy.
+- **Headset service discovery:** the installer registers the OpenXR runtime for
+  local apps, but WiVRn's Linux Avahi service publication does not have a macOS
+  Bonjour/mDNS equivalent yet. Quest connection may still require manual host
+  selection or the current WiVRn pairing flow.
+- **Desktop shell parity:** the Linux desktop shell, app launcher, and related
+  desktop integration are not part of the current macOS host package.
+- **Packaged host UX:** the Tauri app is an initial controller, not a polished
+  menu bar app, pairing assistant, diagnostics view, or background supervisor.
+- **Eye gaze tracking:** not implemented on the macOS path.
+- **Metal swapchain synchronization:** the current synchronization path favors
+  correctness over latency. A lower-latency MTLSharedEvent-style path is still
+  future work.
+- **Release hardening:** signing, notarization, dependency bundling policy, and
+  release automation still need to be finalized before public binary releases.
+
 ## Package An App Bundle
 
-Create a minimal `.app` bundle:
+Create the Tauri `.app` and `.dmg` bundle:
 
 ```bash
+pnpm install --dir desktop/tauri-app
 scripts/package_macos_app.sh
 ```
 
-Output:
+Outputs are under Tauri's bundle directory:
 
 ```text
-dist/WiVRn Mac Host.app
+desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/WiVRn Mac Host.app
+desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/
 ```
 
-The app bundle contains the headless server and the Monado OpenXR runtime
-artifacts. It is currently a packaging scaffold, not a polished launcher.
+The app bundle contains a Tauri controller UI, the headless server sidecar, and
+the Monado OpenXR runtime artifacts. The controller can start, stop, restart,
+show recent logs, expose the config path, and check for app updates.
 
 ## Build A PKG
 
-Create a macOS installer package:
+Create a macOS installer package from the Tauri-built app:
 
 ```bash
 scripts/make_signed_pkg.sh
@@ -175,27 +231,42 @@ INSTALLER_IDENTITY="Developer ID Installer: Example, Inc. (TEAMID)" \
   scripts/make_signed_pkg.sh
 ```
 
-Notarization is not implemented yet. The intended future release flow is:
+GitHub Actions uses the same signing secret names as the JSTorrent Tauri app:
+
+- `MACOS_CERTIFICATE_P12_BASE64`
+- `MACOS_CERTIFICATE_PASSWORD`
+- `MACOS_KEYCHAIN_PASSWORD`
+- `ASC_API_KEY_P8_BASE64`
+- `ASC_API_KEY_ID`
+- `ASC_API_ISSUER_ID`
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+Tagged releases use `v<version>` tags, create Tauri updater artifacts, and
+upload the pkg alongside the Tauri app artifacts. The intended release flow is:
 
 1. Build WiVRn and Monado.
-2. Build `WiVRn Mac Host.app`.
-3. Sign the app bundle.
-4. Build and sign a `.pkg`.
-5. Notarize and staple the package.
+2. Prepare Tauri sidecars and OpenXR resources.
+3. Build and sign `WiVRn Mac Host.app`.
+4. Build and sign a `.dmg`.
+5. Build and sign a `.pkg`.
 6. Upload release artifacts from GitHub Actions.
+7. Publish Tauri updater metadata.
+
+See [docs/tauri-packaging-plan.md](docs/tauri-packaging-plan.md) for the
+JSTorrent-derived packaging plan.
 
 ## GitHub Actions
 
-`.github/workflows/macos-build.yml` is a starter workflow. It builds and
-packages unsigned artifacts on a macOS runner.
+`.github/workflows/macos-build.yml` builds the headless host, builds the Tauri
+app/DMG, wraps the app in a pkg, and uploads artifacts on a macOS runner.
 
 Before using it for public releases, decide:
 
-- whether the source forks are public or private
-- how signing certificates are stored
-- whether release jobs should notarize
 - whether binaries should bundle all dependent runtime libraries or use a
   stricter system dependency list
+- whether updates that alter OpenXR registration should require a fresh pkg
+  install or a privileged helper migration
 
 ## Non-Goals
 

@@ -6,6 +6,11 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -16,14 +21,66 @@ jobs:
       MONADO_REPO: https://github.com/kzahel/monado.git
       WIVRN_BRANCH: combined
       MONADO_BRANCH: combined
+      TARGET_TRIPLE: aarch64-apple-darwin
+      HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' }}
+      HAS_MACOS_NOTARIZATION: ${{ secrets.ASC_API_KEY_P8_BASE64 != '' }}
 
     steps:
       - name: Checkout packaging repo
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
       - name: Install build tools
         run: >
-          brew install cmake ninja pkg-config boost eigen nlohmann-json vulkan-loader vulkan-headers glslang spirv-tools shaderc
+          brew install cmake ninja pkg-config boost eigen nlohmann-json
+          vulkan-loader vulkan-headers glslang spirv-tools shaderc
+
+      - name: Set up macOS code signing keychain
+        if: env.HAS_MACOS_SIGNING == 'true'
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > certificate.p12
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security find-identity -v -p codesigning build.keychain
+          rm -f certificate.p12
+
+      - name: Set up macOS notarization credentials
+        if: env.HAS_MACOS_NOTARIZATION == 'true'
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          KEY_PATH="$HOME/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          echo "$ASC_API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Bootstrap source checkouts
         run: scripts/bootstrap_sources.sh
@@ -31,14 +88,85 @@ jobs:
       - name: Build headless host
         run: scripts/build_macos_headless.sh
 
-      - name: Package unsigned app/pkg
-        run: scripts/make_signed_pkg.sh
+      - name: Prepare Tauri sidecars
+        run: scripts/prepare_tauri_sidecars.sh
 
-      - name: Upload artifacts
+      - name: Install Tauri frontend dependencies
+        run: pnpm install
+        working-directory: desktop/tauri-app
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && 'Developer ID Application: Kyle Graehl (VD7BYQ6ABM)' || '-' }}
+          APPLE_API_KEY: ${{ secrets.ASC_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
+        with:
+          projectPath: desktop/tauri-app
+          tauriScript: pnpm tauri
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && 'v__VERSION__' || '' }}
+          releaseName: 'WiVRn Mac Host v__VERSION__'
+          releaseBody: 'See the assets to download and install this version.'
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: ${{ startsWith(github.ref, 'refs/tags/') && secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          args: >-
+            --target aarch64-apple-darwin
+            ${{ secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config "{\"bundle\":{\"createUpdaterArtifacts\":false}}"' || '' }}
+
+      - name: Build .pkg installer
+        env:
+          INSTALLER_IDENTITY: ${{ env.HAS_MACOS_SIGNING == 'true' && 'Developer ID Installer: Kyle Graehl (VD7BYQ6ABM)' || '' }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' desktop/tauri-app/src-tauri/tauri.conf.json | head -1)"
+          fi
+          APP_PATH="desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/WiVRn Mac Host.app"
+          VERSION="$VERSION" \
+          TARGET_TRIPLE=aarch64-apple-darwin \
+          ARCH=aarch64 \
+          APP_PATH="$APP_PATH" \
+            scripts/make_signed_pkg.sh
+
+      - name: Notarize .pkg installer
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_MACOS_NOTARIZATION == 'true'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG="dist/WiVRn_Mac_Host_${VERSION}_aarch64.pkg"
+          xcrun notarytool submit "$PKG" \
+            --key "$APPLE_API_KEY_PATH" \
+            --key-id "${{ secrets.ASC_API_KEY_ID }}" \
+            --issuer "${{ secrets.ASC_API_ISSUER_ID }}" \
+            --wait
+          xcrun stapler staple "$PKG"
+
+      - name: Upload .pkg to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release upload "$GITHUB_REF_NAME" "dist/WiVRn_Mac_Host_${VERSION}_aarch64.pkg" --clobber
+
+      - name: Upload CI artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: wivrn-macos-host
           path: |
             dist/*.pkg
-            dist/*.app
+            desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
 
+      - name: Clean up macOS keychain
+        if: always()
+        run: |
+          security delete-keychain build.keychain 2>/dev/null || true
+          rm -rf ~/private_keys 2>/dev/null || true

@@ -4,4 +4,9 @@ dist/
 third_party/
 *.log
 *.tmp
-
+desktop/tauri-app/dist/
+desktop/tauri-app/node_modules/
+desktop/tauri-app/src-tauri/target/
+desktop/tauri-app/src-tauri/binaries/
+desktop/tauri-app/src-tauri/gen/
+desktop/tauri-app/src-tauri/resources/openxr/

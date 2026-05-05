@@ -3,81 +3,39 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-build_dir="${BUILD_DIR:-${repo_root}/build/wivrn}"
-dist_dir="${DIST_DIR:-${repo_root}/dist}"
-app_name="${APP_NAME:-WiVRn Mac Host}"
-app_dir="${dist_dir}/${app_name}.app"
-contents_dir="${app_dir}/Contents"
-macos_dir="${contents_dir}/MacOS"
-resources_dir="${contents_dir}/Resources"
-openxr_dir="${resources_dir}/openxr"
+tauri_dir="${TAURI_APP_DIR:-${repo_root}/desktop/tauri-app}"
+target_triple="${TARGET_TRIPLE:-$(rustc --print host-tuple)}"
+bundles="${TAURI_BUNDLES:-app,dmg}"
 
-host_bin="${WIVRN_HOST_BIN:-${build_dir}/server/wivrn-server-headless}"
-runtime_dylib="${MONADO_OPENXR_RUNTIME_PATH:-${build_dir}/_deps/monado-build/src/xrt/targets/openxr/libopenxr_wivrn.dylib}"
-
-if [ ! -x "${host_bin}" ]; then
-    echo "Missing host binary: ${host_bin}" >&2
-    echo "Run scripts/build_macos_headless.sh first." >&2
-    exit 1
-fi
-
-if [ ! -f "${runtime_dylib}" ]; then
-    echo "Missing OpenXR runtime dylib: ${runtime_dylib}" >&2
-    echo "Run scripts/build_macos_headless.sh first." >&2
-    exit 1
-fi
-
-rm -rf "${app_dir}"
-mkdir -p "${macos_dir}" "${openxr_dir}"
-
-cp "${host_bin}" "${macos_dir}/wivrn-server-headless"
-cp "${runtime_dylib}" "${openxr_dir}/libopenxr_wivrn.dylib"
-
-cat >"${openxr_dir}/openxr_wivrn.json" <<'EOF'
-{
-    "file_format_version": "1.0.0",
-    "runtime": {
-        "name": "WiVRn Mac Host",
-        "library_path": "./libopenxr_wivrn.dylib"
-    }
+need_cmd() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "Missing required command: $1" >&2
+        exit 1
+    fi
 }
-EOF
 
-cat >"${macos_dir}/WiVRn Mac Host" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
+need_cmd pnpm
+need_cmd rustc
 
-app_macos_dir="$(cd "$(dirname "$0")" && pwd)"
-exec "${app_macos_dir}/wivrn-server-headless" --no-encrypt "$@"
-EOF
-chmod +x "${macos_dir}/WiVRn Mac Host"
+"${repo_root}/scripts/prepare_tauri_sidecars.sh"
 
-cat >"${contents_dir}/Info.plist" <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>WiVRn Mac Host</string>
-  <key>CFBundleIdentifier</key>
-  <string>dev.xrremote.wivrn-macos-host</string>
-  <key>CFBundleName</key>
-  <string>WiVRn Mac Host</string>
-  <key>CFBundleDisplayName</key>
-  <string>WiVRn Mac Host</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
-  <key>CFBundleVersion</key>
-  <string>1</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-</dict>
-</plist>
-EOF
+if [ ! -d "${tauri_dir}/node_modules" ]; then
+    echo "Missing ${tauri_dir}/node_modules." >&2
+    echo "Run: pnpm install --dir ${tauri_dir}" >&2
+    exit 1
+fi
+
+extra_args=()
+if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+    extra_args+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+fi
+
+pnpm --dir "${tauri_dir}" tauri build --target "${target_triple}" --bundles "${bundles}" "${extra_args[@]}"
+
+app_dir="${tauri_dir}/src-tauri/target/${target_triple}/release/bundle/macos/WiVRn Mac Host.app"
+if [ ! -d "${app_dir}" ]; then
+    echo "Tauri build completed but app was not found: ${app_dir}" >&2
+    exit 1
+fi
 
 echo "Created ${app_dir}"
