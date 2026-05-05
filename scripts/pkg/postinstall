@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+target_volume="${3:-/}"
+if [ "${target_volume}" = "/" ]; then
+    root=""
+else
+    root="${target_volume%/}"
+fi
+
+app_path="${root}/Applications/WiVRn Mac Host.app"
+runtime_dylib="${app_path}/Contents/Resources/openxr/libopenxr_wivrn.dylib"
+registry_dir="${root}/usr/local/share/openxr/1"
+runtime_manifest="${registry_dir}/openxr_wivrn.json"
+
+if [ ! -f "${runtime_dylib}" ]; then
+    echo "WiVRn OpenXR runtime dylib not found: ${runtime_dylib}" >&2
+    exit 1
+fi
+
+mkdir -p "${registry_dir}"
+
+cat >"${runtime_manifest}" <<EOF
+{
+    "file_format_version": "1.0.0",
+    "runtime": {
+        "name": "WiVRn Mac Host",
+        "library_path": "${runtime_dylib}"
+    }
+}
+EOF
+
+archs="$(/usr/bin/lipo -archs "${runtime_dylib}" 2>/dev/null || true)"
+if [ -z "${archs}" ]; then
+    archs="$(/usr/bin/uname -m)"
+fi
+
+registered=0
+has_aarch64=0
+has_x86_64=0
+for arch in ${archs}; do
+    case "${arch}" in
+        arm64|aarch64)
+            ln -sfn "openxr_wivrn.json" "${registry_dir}/active_runtime.aarch64.json"
+            registered=1
+            has_aarch64=1
+            ;;
+        x86_64)
+            ln -sfn "openxr_wivrn.json" "${registry_dir}/active_runtime.x86_64.json"
+            registered=1
+            has_x86_64=1
+            ;;
+    esac
+done
+
+if [ "${has_aarch64}" -eq 1 ] && [ "${has_x86_64}" -eq 1 ]; then
+    ln -sfn "openxr_wivrn.json" "${registry_dir}/active_runtime.json"
+elif [ "${registered}" -eq 0 ]; then
+    ln -sfn "openxr_wivrn.json" "${registry_dir}/active_runtime.json"
+fi
+
+echo "Registered WiVRn OpenXR runtime: ${runtime_manifest}"

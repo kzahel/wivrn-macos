@@ -99,11 +99,44 @@ After building:
 build/wivrn/server/wivrn-server-headless --no-encrypt
 ```
 
-For local OpenXR apps, point them at the generated runtime manifest:
+For development builds, point local OpenXR apps at the generated runtime
+manifest:
 
 ```bash
 XR_RUNTIME_JSON="$PWD/build/wivrn/openxr_wivrn-dev.json" your-openxr-app
 ```
+
+This is only a build-tree override. Installed apps should use the normal OpenXR
+loader flow described below.
+
+## OpenXR Runtime Discovery
+
+OpenXR applications do not discover WiVRn headsets directly. They link or load
+the OpenXR loader, create an `XrInstance`, and ask the active runtime for a
+head-mounted display system with `xrGetSystem`.
+
+The intended macOS flow is:
+
+1. The WiVRn Mac Host package installs the headless host and OpenXR runtime.
+2. The installer registers WiVRn as the active OpenXR runtime.
+3. An OpenXR app loads the OpenXR loader.
+4. The loader reads the active runtime manifest and loads WiVRn's runtime.
+5. WiVRn/Monado handles server IPC, network pairing, and headset availability.
+6. The app sees either an available HMD system or a normal OpenXR unavailable
+   error.
+
+The package writes:
+
+```text
+/usr/local/share/openxr/1/openxr_wivrn.json
+/usr/local/share/openxr/1/active_runtime.<abi>.json -> openxr_wivrn.json
+```
+
+For current Apple Silicon builds, `<abi>` is `aarch64`. Universal builds can
+also use the undecorated `active_runtime.json` fallback. This mirrors the Linux
+active-runtime convention while using the macOS runtime lookup path supported by
+the Khronos OpenXR loader. `XR_RUNTIME_JSON` remains a developer escape hatch
+for testing a non-installed build.
 
 ## Package An App Bundle
 
@@ -131,6 +164,8 @@ scripts/make_signed_pkg.sh
 ```
 
 Without signing identities this creates an unsigned package in `dist/`.
+The package installs the app into `/Applications` and registers WiVRn as the
+active OpenXR runtime for local OpenXR applications.
 
 For local signing:
 

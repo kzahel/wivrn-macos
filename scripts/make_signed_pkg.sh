@@ -26,6 +26,7 @@ rm -f "${unsigned_pkg}" "${pkg_path}"
 pkgbuild \
     --component "${app_dir}" \
     --install-location /Applications \
+    --scripts "${repo_root}/scripts/pkg" \
     "${unsigned_pkg}"
 
 if [ -n "${installer_identity}" ]; then
@@ -37,4 +38,3 @@ else
 fi
 
 echo "Created ${pkg_path}"
-

@@ -14,7 +14,6 @@ openxr_dir="${resources_dir}/openxr"
 
 host_bin="${WIVRN_HOST_BIN:-${build_dir}/server/wivrn-server-headless}"
 runtime_dylib="${MONADO_OPENXR_RUNTIME_PATH:-${build_dir}/_deps/monado-build/src/xrt/targets/openxr/libopenxr_wivrn.dylib}"
-runtime_json="${XR_RUNTIME_JSON:-${build_dir}/openxr_wivrn-dev.json}"
 
 if [ ! -x "${host_bin}" ]; then
     echo "Missing host binary: ${host_bin}" >&2
@@ -28,18 +27,21 @@ if [ ! -f "${runtime_dylib}" ]; then
     exit 1
 fi
 
-if [ ! -f "${runtime_json}" ]; then
-    echo "Missing OpenXR runtime manifest: ${runtime_json}" >&2
-    echo "Run scripts/build_macos_headless.sh first." >&2
-    exit 1
-fi
-
 rm -rf "${app_dir}"
 mkdir -p "${macos_dir}" "${openxr_dir}"
 
 cp "${host_bin}" "${macos_dir}/wivrn-server-headless"
 cp "${runtime_dylib}" "${openxr_dir}/libopenxr_wivrn.dylib"
-cp "${runtime_json}" "${openxr_dir}/openxr_wivrn.json"
+
+cat >"${openxr_dir}/openxr_wivrn.json" <<'EOF'
+{
+    "file_format_version": "1.0.0",
+    "runtime": {
+        "name": "WiVRn Mac Host",
+        "library_path": "./libopenxr_wivrn.dylib"
+    }
+}
+EOF
 
 cat >"${macos_dir}/WiVRn Mac Host" <<'EOF'
 #!/usr/bin/env bash
@@ -79,4 +81,3 @@ cat >"${contents_dir}/Info.plist" <<'EOF'
 EOF
 
 echo "Created ${app_dir}"
-
