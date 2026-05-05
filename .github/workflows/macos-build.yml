@@ -1,0 +1,43 @@
+name: macOS build
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    env:
+      WIVRN_REPO: https://github.com/kzahel/WiVRn.git
+      MONADO_REPO: https://github.com/kzahel/monado.git
+      WIVRN_BRANCH: combined
+      MONADO_BRANCH: combined
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install cmake ninja
+
+      - name: Bootstrap source checkouts
+        run: scripts/bootstrap_sources.sh
+
+      - name: Build headless host
+        run: scripts/build_macos_headless.sh
+
+      - name: Package unsigned app/pkg
+        run: scripts/make_signed_pkg.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wivrn-macos-host
+          path: |
+            dist/*.pkg
+            dist/*.app
+
