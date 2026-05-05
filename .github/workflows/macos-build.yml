@@ -22,7 +22,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install build tools
-        run: brew install cmake ninja vulkan-loader vulkan-headers
+        run: >
+          brew install cmake ninja pkg-config boost eigen nlohmann-json vulkan-loader vulkan-headers glslang spirv-tools shaderc
 
       - name: Bootstrap source checkouts
         run: scripts/bootstrap_sources.sh
