@@ -10,10 +10,6 @@ contains:
 - enough launcher/packaging glue to run on macOS
 - eventually, a signed `.app` and `.pkg` built by GitHub Actions
 
-This repo is intentionally small. It is not a research notebook, validation
-harness, or application testbed. Historical headset test scripts, unrelated XR
-product notes, and rewrite experiments belong elsewhere.
-
 ## Current Shape
 
 This repo is a thin build and packaging wrapper around two source checkouts:
