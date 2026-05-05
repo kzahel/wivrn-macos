@@ -27,7 +27,7 @@ fi
 
 extra_args=()
 if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-    extra_args+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+    extra_args+=(--config src-tauri/tauri.no-updater.conf.json)
 fi
 
 pnpm --dir "${tauri_dir}" tauri build --target "${target_triple}" --bundles "${bundles}" "${extra_args[@]}"

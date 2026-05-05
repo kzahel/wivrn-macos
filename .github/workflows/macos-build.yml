@@ -117,7 +117,7 @@ jobs:
           includeUpdaterJson: ${{ startsWith(github.ref, 'refs/tags/') && secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
           args: >-
             --target aarch64-apple-darwin
-            ${{ secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config "{\"bundle\":{\"createUpdaterArtifacts\":false}}"' || '' }}
+            ${{ secrets.TAURI_SIGNING_PRIVATE_KEY == '' && '--config src-tauri/tauri.no-updater.conf.json' || '' }}
 
       - name: Build .pkg installer
         env:
