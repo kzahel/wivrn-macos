@@ -88,6 +88,9 @@ jobs:
       - name: Build headless host
         run: scripts/build_macos_headless.sh
 
+      - name: Build OpenXR probe apps
+        run: scripts/build_openxr_probes.sh
+
       - name: Prepare Tauri sidecars
         run: scripts/prepare_tauri_sidecars.sh
 
@@ -176,6 +179,7 @@ jobs:
           name: wivrn-macos-host
           path: |
             dist/*.pkg
+            build/probes/*
             desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
             desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
 

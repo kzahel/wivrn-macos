@@ -120,6 +120,52 @@ XR_RUNTIME_JSON="$PWD/build/wivrn/openxr_wivrn-dev.json" your-openxr-app
 This is only a build-tree override. Installed apps should use the normal OpenXR
 loader flow described below.
 
+## OpenXR Probe Apps
+
+This repo includes two small command-line OpenXR examples under `examples/`.
+They are meant to validate the packaged host and runtime while staying separate
+from the packaging logic.
+
+- `openxr-runtime-probe` loads the OpenXR loader, creates an instance, asks for
+  an HMD system, and prints runtime/system/view configuration details. This is
+  the normal app discovery path and is the first thing to try after installing
+  the package.
+- `openxr-metal-frame-probe` is the carried-over Metal graphics probe. It
+  loads the WiVRn/Monado runtime dylib directly, uses `XR_KHR_metal_enable`,
+  creates stereo swapchains, renders simple test patterns, and submits
+  projection frames.
+
+Build the probes:
+
+```bash
+scripts/build_openxr_probes.sh
+```
+
+Run the normal loader/discovery probe against a build-tree runtime:
+
+```bash
+XR_RUNTIME_JSON="$PWD/build/wivrn/openxr_wivrn-dev.json" \
+  build/probes/openxr-runtime-probe
+```
+
+After installing the pkg, the same probe should work without `XR_RUNTIME_JSON`
+because the installer registers WiVRn as the active OpenXR runtime. If the
+OpenXR loader is not in the dynamic loader search path, set
+`WIVRN_OPENXR_LOADER_PATH`.
+
+Run the Metal frame-submit probe against a build-tree runtime:
+
+```bash
+MONADO_OPENXR_RUNTIME_PATH="$PWD/build/wivrn/_deps/monado-build/src/xrt/targets/openxr/libopenxr_wivrn.dylib" \
+WIVRN_OPENXR_METAL_PROBE_PATTERN=world-geometry \
+WIVRN_OPENXR_METAL_PROBE_FRAMES=120 \
+  build/probes/openxr-metal-frame-probe
+```
+
+Useful Metal probe patterns include `stereo-rg`, `solid-magenta`,
+`geometry-quadrants`, `world-card`, `world-grid`, `world-grid-passthrough`, and
+`world-geometry`.
+
 ## OpenXR Runtime Discovery
 
 OpenXR applications do not discover WiVRn headsets directly. They link or load
@@ -267,10 +313,3 @@ Before using it for public releases, decide:
   stricter system dependency list
 - whether updates that alter OpenXR registration should require a fresh pkg
   install or a privileged helper migration
-
-## Non-Goals
-
-- No headset validation scripts in this repo.
-- No application-specific test harnesses.
-- No product vision documents.
-- No MIT rewrite experiment.
