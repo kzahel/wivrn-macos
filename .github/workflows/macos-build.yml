@@ -96,6 +96,20 @@ jobs:
         working-directory: desktop/tauri-app
 
       - name: Build Tauri app
+        if: env.HAS_MACOS_SIGNING != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop/tauri-app
+          tauriScript: pnpm tauri
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: false
+          args: --target aarch64-apple-darwin --config src-tauri/tauri.no-updater.conf.json
+
+      - name: Build signed Tauri app
+        if: env.HAS_MACOS_SIGNING == 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
