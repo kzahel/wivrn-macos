@@ -103,7 +103,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && 'Developer ID Application: Kyle Graehl (VD7BYQ6ABM)' || '-' }}
+          APPLE_SIGNING_IDENTITY: "${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && 'Developer ID Application: Kyle Graehl (VD7BYQ6ABM)' || '-' }}"
           APPLE_API_KEY: ${{ secrets.ASC_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
         with:
@@ -121,7 +121,7 @@ jobs:
 
       - name: Build .pkg installer
         env:
-          INSTALLER_IDENTITY: ${{ env.HAS_MACOS_SIGNING == 'true' && 'Developer ID Installer: Kyle Graehl (VD7BYQ6ABM)' || '' }}
+          INSTALLER_IDENTITY: "${{ env.HAS_MACOS_SIGNING == 'true' && 'Developer ID Installer: Kyle Graehl (VD7BYQ6ABM)' || '' }}"
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
