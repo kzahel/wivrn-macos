@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
 
     env:
       WIVRN_REPO: https://github.com/kzahel/WiVRn.git
