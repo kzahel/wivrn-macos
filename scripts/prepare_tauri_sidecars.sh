@@ -9,6 +9,7 @@ target_triple="${TARGET_TRIPLE:-$(rustc --print host-tuple)}"
 
 host_bin="${WIVRN_HOST_BIN:-${build_dir}/server/wivrn-server-headless}"
 runtime_dylib="${MONADO_OPENXR_RUNTIME_PATH:-${build_dir}/_deps/monado-build/src/xrt/targets/openxr/libopenxr_wivrn.dylib}"
+loader_dylib="${OPENXR_LOADER_DYLIB:-${repo_root}/build/openxr-loader/lib/libopenxr_loader.dylib}"
 
 sidecar_dir="${tauri_dir}/src-tauri/binaries"
 resource_openxr_dir="${tauri_dir}/src-tauri/resources/openxr"
@@ -25,12 +26,19 @@ if [ ! -f "${runtime_dylib}" ]; then
     exit 1
 fi
 
+if [ ! -f "${loader_dylib}" ]; then
+    echo "Missing OpenXR loader dylib: ${loader_dylib}" >&2
+    echo "Run scripts/build_openxr_loader.sh first." >&2
+    exit 1
+fi
+
 mkdir -p "${sidecar_dir}" "${resource_openxr_dir}"
 
 cp "${host_bin}" "${sidecar_dir}/wivrn-server-headless-${target_triple}"
 chmod +x "${sidecar_dir}/wivrn-server-headless-${target_triple}"
 
 cp "${runtime_dylib}" "${resource_openxr_dir}/libopenxr_wivrn.dylib"
+cp "${loader_dylib}" "${resource_openxr_dir}/libopenxr_loader.dylib"
 
 cat >"${resource_openxr_dir}/openxr_wivrn.json" <<'EOF'
 {

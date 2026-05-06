@@ -85,6 +85,9 @@ jobs:
       - name: Bootstrap source checkouts
         run: scripts/bootstrap_sources.sh
 
+      - name: Build OpenXR loader
+        run: scripts/build_openxr_loader.sh
+
       - name: Build headless host
         run: scripts/build_macos_headless.sh
 
@@ -179,6 +182,7 @@ jobs:
           name: wivrn-macos-host
           path: |
             dist/*.pkg
+            build/openxr-loader/lib/*.dylib
             build/probes/*
             desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
             desktop/tauri-app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app

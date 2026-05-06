@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 source_root="${SOURCE_ROOT:-${repo_root}/third_party}"
 default_monado_dir="${source_root}/monado"
+openxr_loader_dir="${OPENXR_LOADER_OUTPUT_DIR:-${repo_root}/build/openxr-loader}"
 if [ -n "${MONADO_SOURCE_DIR:-}" ]; then
     monado_dir="${MONADO_SOURCE_DIR}"
 elif [ -d "${default_monado_dir}/src/external/openxr_includes/openxr" ]; then
@@ -15,7 +16,16 @@ else
     monado_dir="${default_monado_dir}"
 fi
 build_dir="${PROBE_BUILD_DIR:-${repo_root}/build/probes}"
-include_dir="${monado_dir}/src/external/openxr_includes"
+openxr_sdk_include_dir="${openxr_loader_dir}/include"
+monado_include_dir="${monado_dir}/src/external/openxr_includes"
+if [ "${SKIP_OPENXR_LOADER_BUILD:-0}" != "1" ]; then
+    "${repo_root}/scripts/build_openxr_loader.sh"
+fi
+if [ -d "${openxr_sdk_include_dir}/openxr" ]; then
+    include_dir="${openxr_sdk_include_dir}"
+else
+    include_dir="${monado_include_dir}"
+fi
 
 need_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then

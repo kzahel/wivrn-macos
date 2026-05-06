@@ -47,6 +47,8 @@ The app bundle should contain:
 - the Tauri UI/controller executable
 - `wivrn-server-headless` as a Tauri sidecar
 - `libopenxr_wivrn.dylib` as an app resource
+- pinned Khronos `libopenxr_loader.dylib` as an app resource for bundled
+  probes and diagnostics
 - a bundled OpenXR runtime manifest for development/debug visibility
 
 The UI should provide:
@@ -78,6 +80,11 @@ The pkg postinstall should register the OpenXR runtime:
 That mirrors the current script-based package and keeps local OpenXR apps on
 the normal loader path. A plain DMG install can still be useful, but it cannot
 perform this system registration step on its own.
+
+The pkg should not install `libopenxr_loader.dylib` globally into
+`/usr/local/lib`. On macOS, OpenXR apps should bundle or explicitly locate a
+Khronos loader. WiVRn's package should provide one for its own tools and probes
+while owning runtime registration separately.
 
 ## Signing And Notarization Secrets
 

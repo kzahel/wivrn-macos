@@ -7,6 +7,7 @@ contains:
 
 - `wivrn-server-headless`
 - the Monado OpenXR runtime used by WiVRn
+- a pinned Khronos OpenXR loader for bundled probes and app-side testing
 - a small Tauri controller app for status, logs, updates, and start/stop
 - a signed `.app`, `.dmg`, and `.pkg` built by GitHub Actions
 
@@ -24,10 +25,13 @@ wivrn-macos/
   third_party/
     wivrn/
     monado/
+    OpenXR-SDK/
   desktop/
     tauri-app/
   build/
     wivrn/
+    openxr-loader/
+    probes/
   dist/
 ```
 
@@ -96,6 +100,17 @@ MONADO_SOURCE_DIR=/Users/kgraehl/code/monado \
   scripts/build_macos_headless.sh
 ```
 
+Build the pinned Khronos OpenXR loader:
+
+```bash
+scripts/build_openxr_loader.sh
+```
+
+Outputs:
+
+- `build/openxr-loader/lib/libopenxr_loader.dylib`
+- `build/openxr-loader/include/openxr/`
+
 ## Run Locally
 
 After building:
@@ -135,7 +150,7 @@ from the packaging logic.
   creates stereo swapchains, renders simple test patterns, and submits
   projection frames.
 
-Build the probes:
+Build the loader and probes:
 
 ```bash
 scripts/build_openxr_probes.sh
@@ -149,9 +164,9 @@ XR_RUNTIME_JSON="$PWD/build/wivrn/openxr_wivrn-dev.json" \
 ```
 
 After installing the pkg, the same probe should work without `XR_RUNTIME_JSON`
-because the installer registers WiVRn as the active OpenXR runtime. If the
-OpenXR loader is not in the dynamic loader search path, set
-`WIVRN_OPENXR_LOADER_PATH`.
+because the installer registers WiVRn as the active OpenXR runtime. The probe
+loads the repo-built loader from `build/openxr-loader/lib/` by default; set
+`WIVRN_OPENXR_LOADER_PATH` to override it.
 
 Run the Metal frame-submit probe against a build-tree runtime:
 
@@ -176,7 +191,8 @@ The intended macOS flow is:
 
 1. The WiVRn Mac Host package installs the headless host and OpenXR runtime.
 2. The installer registers WiVRn as the active OpenXR runtime.
-3. An OpenXR app loads the OpenXR loader.
+3. An OpenXR app loads the OpenXR loader. On macOS there is no Apple-provided
+   system loader, so apps should bundle or explicitly locate a Khronos loader.
 4. The loader reads the active runtime manifest and loads WiVRn's runtime.
 5. WiVRn/Monado handles server IPC, network pairing, and headset availability.
 6. The app sees either an available HMD system or a normal OpenXR unavailable
@@ -194,6 +210,11 @@ also use the undecorated `active_runtime.json` fallback. This mirrors the Linux
 active-runtime convention while using the macOS runtime lookup path supported by
 the Khronos OpenXR loader. `XR_RUNTIME_JSON` remains a developer escape hatch
 for testing a non-installed build.
+
+This repo builds a pinned Khronos loader for its probes and packages that loader
+inside the Tauri app resources. It does not install the loader globally into
+`/usr/local/lib`; real macOS OpenXR apps should bundle/link a loader while using
+the registered WiVRn runtime manifest for runtime selection.
 
 ## Current Feature State
 

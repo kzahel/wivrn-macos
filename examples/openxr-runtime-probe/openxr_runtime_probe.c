@@ -5,6 +5,8 @@
 
 #include <dlfcn.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <mach-o/dyld.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -41,6 +43,7 @@ result_name(XrResult result)
 	case XR_ERROR_FEATURE_UNSUPPORTED: return "XR_ERROR_FEATURE_UNSUPPORTED";
 	case XR_ERROR_EXTENSION_NOT_PRESENT: return "XR_ERROR_EXTENSION_NOT_PRESENT";
 	case XR_ERROR_LIMIT_REACHED: return "XR_ERROR_LIMIT_REACHED";
+	case XR_ERROR_RUNTIME_UNAVAILABLE: return "XR_ERROR_RUNTIME_UNAVAILABLE";
 	case XR_ERROR_SIZE_INSUFFICIENT: return "XR_ERROR_SIZE_INSUFFICIENT";
 	case XR_ERROR_HANDLE_INVALID: return "XR_ERROR_HANDLE_INVALID";
 	case XR_ERROR_INSTANCE_LOST: return "XR_ERROR_INSTANCE_LOST";
@@ -115,6 +118,49 @@ try_load_path(const char *path, struct openxr_loader *out_loader)
 	return true;
 }
 
+static bool
+get_executable_dir(char *out_dir, size_t out_dir_size)
+{
+	char exe_path[PATH_MAX];
+	uint32_t exe_path_size = sizeof(exe_path);
+	if (_NSGetExecutablePath(exe_path, &exe_path_size) != 0) {
+		return false;
+	}
+
+	char resolved_path[PATH_MAX];
+	const char *path = realpath(exe_path, resolved_path);
+	if (path == NULL) {
+		path = exe_path;
+	}
+
+	if (snprintf(out_dir, out_dir_size, "%s", path) >= (int)out_dir_size) {
+		return false;
+	}
+
+	char *last_slash = strrchr(out_dir, '/');
+	if (last_slash == NULL) {
+		return false;
+	}
+	*last_slash = '\0';
+	return true;
+}
+
+static bool
+try_load_executable_relative(const char *relative_path, struct openxr_loader *out_loader)
+{
+	char exe_dir[PATH_MAX];
+	if (!get_executable_dir(exe_dir, sizeof(exe_dir))) {
+		return false;
+	}
+
+	char candidate[PATH_MAX];
+	if (snprintf(candidate, sizeof(candidate), "%s/%s", exe_dir, relative_path) >= (int)sizeof(candidate)) {
+		return false;
+	}
+
+	return try_load_path(candidate, out_loader);
+}
+
 static int
 load_openxr_loader(struct openxr_loader *out_loader)
 {
@@ -138,6 +184,18 @@ load_openxr_loader(struct openxr_loader *out_loader)
 		return 0;
 	}
 
+	const char *relative_paths[] = {
+	    "../openxr-loader/lib/libopenxr_loader.dylib",
+	    "../Frameworks/libopenxr_loader.dylib",
+	    "../Resources/openxr/libopenxr_loader.dylib",
+	    "libopenxr_loader.dylib",
+	};
+	for (size_t i = 0; i < sizeof(relative_paths) / sizeof(relative_paths[0]); ++i) {
+		if (try_load_executable_relative(relative_paths[i], out_loader)) {
+			return 0;
+		}
+	}
+
 	const char *paths[] = {
 	    "libopenxr_loader.dylib",
 	    "/opt/homebrew/lib/libopenxr_loader.dylib",
@@ -151,7 +209,7 @@ load_openxr_loader(struct openxr_loader *out_loader)
 	}
 
 	fprintf(stderr, "Could not load libopenxr_loader.dylib.\n");
-	fprintf(stderr, "Install an OpenXR loader or set WIVRN_OPENXR_LOADER_PATH.\n");
+	fprintf(stderr, "Run scripts/build_openxr_loader.sh or set WIVRN_OPENXR_LOADER_PATH.\n");
 	return 1;
 }
 

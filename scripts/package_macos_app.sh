@@ -17,6 +17,7 @@ need_cmd() {
 need_cmd pnpm
 need_cmd rustc
 
+"${repo_root}/scripts/build_openxr_loader.sh"
 "${repo_root}/scripts/prepare_tauri_sidecars.sh"
 
 if [ ! -d "${tauri_dir}/node_modules" ]; then
